@@ -1,0 +1,304 @@
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>Website Pribadi Dicky</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet"/>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script>
+        let running = false;
+        let startTime;
+        let elapsedTime = 0;
+        let interval;
+        let steps = 0;
+        let distance = 0;
+        let speed = 0;
+        let pace = 0;
+        let path = [];
+        let lastPosition = null;
+        let history = [];
+
+        function updateTime() {
+            const now = new Date();
+            let hours = now.getHours();
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12;
+            hours = hours ? hours : 12;
+            document.getElementById('time').textContent = `${hours}:${minutes}:${seconds} ${ampm}`;
+        }
+
+        function updateDate() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = now.toLocaleString('default', { month: 'long' });
+            const day = String(now.getDate()).padStart(2, '0');
+            const weekday = now.toLocaleString('id-ID', { weekday: 'long' });
+            document.getElementById('date').textContent = `${weekday}, ${day} ${month} ${year}`;
+        }
+
+        function updateStats() {
+            if (running && lastPosition) {
+                const now = Date.now();
+                const elapsedTimeInHours = (now - startTime) / 3600000;
+                distance = (steps * 0.0008).toFixed(2);
+                speed = (distance / elapsedTimeInHours).toFixed(2);
+                pace = (elapsedTimeInHours / distance).toFixed(2);
+                document.getElementById('steps').textContent = steps;
+                document.getElementById('distance').textContent = distance;
+                document.getElementById('speed').textContent = speed;
+                document.getElementById('pace').textContent = pace;
+            }
+        }
+
+        function startRunning() {
+            if (!running) {
+                running = true;
+                startTime = Date.now() - elapsedTime;
+                interval = setInterval(updateRunningTime, 1000);
+                document.getElementById('startButton').textContent = 'Pause';
+            } else {
+                running = false;
+                clearInterval(interval);
+                elapsedTime = Date.now() - startTime;
+                document.getElementById('startButton').textContent = 'Start';
+            }
+        }
+
+        function resetRunning() {
+            if (elapsedTime > 0) {
+                updateHistory();
+            }
+            running = false;
+            clearInterval(interval);
+            elapsedTime = 0;
+            steps = 0;
+            distance = 0;
+            speed = 0;
+            pace = 0;
+            path = [];
+            lastPosition = null;
+            document.getElementById('runningTime').textContent = '00:00:00';
+            document.getElementById('steps').textContent = '0';
+            document.getElementById('distance').textContent = '0.00';
+            document.getElementById('speed').textContent = '0.00';
+            document.getElementById('pace').textContent = '0.00';
+            document.getElementById('startButton').textContent = 'Start';
+        }
+
+        function updateRunningTime() {
+            elapsedTime = Date.now() - startTime;
+            const totalSeconds = Math.floor(elapsedTime / 1000);
+            const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
+            const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
+            const seconds = String(totalSeconds % 60).padStart(2, '0');
+            document.getElementById('runningTime').textContent = `${hours}:${minutes}:${seconds}`;
+            updateStats();
+        }
+
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3;
+            const φ1 = lat1 * Math.PI/180;
+            const φ2 = lat2 * Math.PI/180;
+            const Δφ = (lat2-lat1) * Math.PI/180;
+            const Δλ = (lon2-lon1) * Math.PI/180;
+
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                      Math.cos(φ1) * Math.cos(φ2) *
+                      Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+            const d = R * c;
+            return d / 1000;
+        }
+
+        function initMap() {
+            const map = L.map('map').setView([0, 0], 2);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+
+            const pathLayer = L.polyline([], { color: 'orange' }).addTo(map);
+            const currentPositionMarker = L.marker([0, 0]).addTo(map);
+
+            if (navigator.geolocation) {
+                navigator.geolocation.watchPosition(function(position) {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+
+                    if (lastPosition) {
+                        const distanceIncrement = calculateDistance(lastPosition.lat, lastPosition.lon, lat, lon);
+                        distance += distanceIncrement;
+                        steps += Math.floor(distanceIncrement / 0.0008);
+                    }
+
+                    lastPosition = { lat, lon };
+                    path.push([lat, lon]);
+                    pathLayer.setLatLngs(path);
+                    currentPositionMarker.setLatLng([lat, lon]);
+
+                    map.setView([lat, lon], 13);
+                }, function(error) {
+                    console.error("Error Code = " + error.code + " - " + error.message);
+                });
+            } else {
+                alert("Geolocation is not supported by this browser.");
+            }
+        }
+
+        window.onload = function() {
+            initMap();
+            setInterval(updateTime, 1000);
+            updateDate();
+        };
+
+        function switchLanguage(language) {
+            const elements = document.querySelectorAll('[data-lang]');
+            elements.forEach(element => {
+                element.style.display = element.getAttribute('data-lang') === language ? 'block' : 'none';
+            });
+        }
+
+        function updateHistory() {
+            const now = new Date();
+            const historyItem = {
+                time: document.getElementById('runningTime').textContent,
+                steps: document.getElementById('steps').textContent,
+                distance: document.getElementById('distance').textContent,
+                speed: document.getElementById('speed').textContent,
+                pace: document.getElementById('pace').textContent,
+                date: 'Senin, 3 Maret 2025',
+                timestamp: now.toLocaleTimeString()
+            };
+            history.unshift(historyItem); // Add new item to the beginning of the array
+            const historyContainer = document.getElementById('history');
+            historyContainer.innerHTML = '';
+            history.forEach((item, index) => {
+                const historyElement = document.createElement('div');
+                historyElement.className = 'p-4 mb-4 bg-gray-100 rounded';
+                historyElement.innerHTML = `
+                    <div class="flex justify-between">
+                        <p><strong>${index + 1}.</strong></p>
+                        <p>${item.date} ${item.timestamp}</p>
+                    </div>
+                    <p>Time: ${item.time}</p>
+                    <p>Steps: ${item.steps}</p>
+                    <p>Distance: ${item.distance} km</p>
+                    <p>Speed: ${item.speed} km/h</p>
+                    <p>Pace: ${item.pace} min/km</p>
+                `;
+                historyContainer.appendChild(historyElement); // Append new history element to the top
+            });
+        }
+    </script>
+</head>
+<body class="bg-gray-100">
+    <div class="bg-black text-white text-sm py-2 px-4 flex justify-between items-center">
+        <div data-lang="id">Selamat datang di Pelacak Lari Dicky</div>
+        <div data-lang="en" style="display: none;">Welcome to Dicky's Running Tracker</div>
+        <div class="relative">
+            <div class="flex items-center space-x-1 cursor-pointer" onclick="document.getElementById('languageDropdown').classList.toggle('hidden')">
+                <img alt="Indonesian flag" class="w-6 h-4" src="https://www.countryflags.com/wp-content/uploads/indonesia-flag-png-large.png"/>
+                <i class="fas fa-chevron-down"></i>
+            </div>
+            <div id="languageDropdown" class="absolute right-0 mt-2 w-48 bg-white border rounded shadow-lg hidden">
+                <div class="py-1">
+                    <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onclick="switchLanguage('id')">Indonesia</a>
+                    <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onclick="switchLanguage('en')">English</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="bg-white shadow-md">
+        <div class="container mx-auto flex flex-col md:flex-row justify-between items-center py-4 px-4">
+            <h1 class="text-xl md:text-2xl font-bold mb-2 md:mb-0" data-lang="id">Website Pribadi Dicky</h1>
+            <h1 class="text-xl md:text-2xl font-bold mb-2 md:mb-0" data-lang="en" style="display: none;">Dicky's Personal Website</h1>
+            <div class="flex items-center justify-center">
+                <p class="text-lg md:text-2xl" id="time">00:00:00 AM</p>
+            </div>
+            <div class="flex items-center justify-center ml-4">
+                <p class="text-lg md:text-2xl" id="date">Senin, 3 Maret 2025</p>
+            </div>
+        </div>
+    </div>
+    <div class="relative">
+        <img alt="Woman running in pink shirt" class="w-full h-64 md:h-96 object-cover" height="600" src="https://storage.googleapis.com/a1aa/image/1nDo1GllJqhchf10zUsfCOYbgd-wE_oPq7ScDTPTcSg.jpg" width="1920"/>
+        <div class="absolute inset-0 flex flex-col justify-center items-center text-white bg-black bg-opacity-50 p-4">
+            <h1 class="text-3xl md:text-5xl font-bold" data-lang="id">MOTIVASI</h1>
+            <h1 class="text-3xl md:text-5xl font-bold" data-lang="en" style="display: none;">MOTIVATION</h1>
+            <p class="mt-4 text-sm md:text-lg text-center" data-lang="id">"Lari bukan hanya tentang seberapa cepat Anda berlari, tetapi tentang seberapa jauh Anda telah melangkah."</p>
+            <p class="mt-4 text-sm md:text-lg text-center" data-lang="en" style="display: none;">"Running is not just about how fast you run, but about how far you have come."</p>
+        </div>
+    </div>
+    <div class="bg-white p-4 md:p-8">
+        <div class="container mx-auto text-center">
+            <h2 class="text-2xl md:text-3xl font-bold mb-4" data-lang="id">Statistik Lari</h2>
+            <h2 class="text-2xl md:text-3xl font-bold mb-4" data-lang="en" style="display: none;">Running Stats</h2>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8">
+                <div class="bg-gray-100 p-2 md:p-4 rounded-lg shadow-md">
+                    <h3 class="text-lg md:text-xl font-semibold mb-2" data-lang="id">Waktu</h3>
+                    <h3 class="text-lg md:text-xl font-semibold mb-2" data-lang="en" style="display: none;">Time</h3>
+                    <div class="flex items-center justify-center">
+                        <img src="https://img.icons8.com/ios-filled/50/000000/clock.png" alt="Clock Icon" class="w-4 h-4 md:w-6 md:h-6 mr-2"/>
+                        <p class="text-lg md:text-2xl" id="runningTime">00:00:00</p>
+                    </div>
+                </div>
+                <div class="bg-gray-100 p-2 md:p-4 rounded-lg shadow-md">
+                    <h3 class="text-lg md:text-xl font-semibold mb-2" data-lang="id">Langkah</h3>
+                    <h3 class="text-lg md:text-xl font-semibold mb-2" data-lang="en" style="display: none;">Steps</h3>
+                    <div class="flex items-center justify-center">
+                        <p class="text-lg md:text-2xl" id="steps">0</p>
+                    </div>
+                </div>
+                <div class="bg-gray-100 p-2 md:p-4 rounded-lg shadow-md">
+                    <h3 class="text-lg md:text-xl font-semibold mb-2" data-lang="id">Jarak (km)</h3>
+                    <h3 class="text-lg md:text-xl font-semibold mb-2" data-lang="en" style="display: none;">Distance (km)</h3>
+                    <div class="flex items-center justify-center">
+                        <p class="text-lg md:text-2xl" id="distance">0.00</p>
+                    </div>
+                </div>
+                <div class="bg-gray-100 p-2 md:p-4 rounded-lg shadow-md">
+                    <h3 class="text-lg md:text-xl font-semibold mb-2" data-lang="id">Kecepatan (km/h)</h3>
+                    <h3 class="text-lg md:text-xl font-semibold mb-2" data-lang="en" style="display: none;">Speed (km/h)</h3>
+                    <div class="flex items-center justify-center">
+                        <img src="https://img.icons8.com/ios-filled/50/000000/speed.png" alt="Speed Icon" class="w-4 h-4 md:w-6 md:h-6 mr-2"/>
+                        <p class="text-lg md:text-2xl" id="speed">0.00</p>
+                    </div>
+                </div>
+                <div class="bg-gray-100 p-2 md:p-4 rounded-lg shadow-md col-span-2 md:col-span-4">
+                    <h3 class="text-lg md:text-xl font-semibold mb-2" data-lang="id">Pace (min/km)</h3>
+                    <h3 class="text-lg md:text-xl font-semibold mb-2" data-lang="en" style="display: none;">Pace (min/km)</h3>
+                    <div class="flex items-center justify-center">
+                        <img src="https://img.icons8.com/ios-filled/50/000000/stopwatch.png" alt="Pace Icon" class="w-4 h-4 md:w-6 md:h-6 mr-2"/>
+                        <p class="text-lg md:text-2xl" id="pace">0.00</p>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-4 md:mt-8 flex justify-center space-x-2 md:space-x-4">
+                <button class="bg-orange-500 text-white py-2 px-4 rounded-lg shadow-md hover:bg-orange-600 transition duration-300" id="startButton" onclick="startRunning()">Start</button>
+                <button class="bg-gray-500 text-white py-2 px-4 rounded-lg shadow-md hover:bg-gray-600 transition duration-300" onclick="resetRunning()">Reset</button>
+            </div>
+        </div>
+    </div>
+    <div class="bg-gray-200 p-4 md:p-8">
+        <div class="container mx-auto text-center">
+            <h2 class="text-2xl md:text-3xl font-bold mb-4" data-lang="id">Rute Lari Anda</h2>
+            <h2 class="text-2xl md:text-3xl font-bold mb-4" data-lang="en" style="display: none;">Your Running Route</h2>
+            <div id="map" class="w-full h-64 md:h-96 bg-gray-300 rounded-lg shadow-md"></div>
+        </div>
+    </div>
+    <div class="bg-white p-4 md:p-8">
+        <div class="container mx-auto text-center">
+            <h2 class="text-2xl md:text-3xl font-bold mb-4" data-lang="id">Riwayat Lari</h2>
+            <h2 class="text-2xl md:text-3xl font-bold mb-4" data-lang="en" style="display: none;">Running History</h2>
+            <div id="history" class="text-left">
+                <!-- Running history will be dynamically added here -->
+            </div>
+        </div>
+    </div>
+</body>
+</html>
